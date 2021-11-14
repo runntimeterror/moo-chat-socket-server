@@ -24,8 +24,6 @@ const randomId = () => crypto.randomBytes(8).toString("hex");
 
 /** MIDDLEWARE **/
 app.use(express.static(path.join(__dirname, 'public')));
-const sessionMiddleware = session({ secret: 'keyboard cat', cookie: { maxAge: 60000 }});
-app.use(sessionMiddleware);
 
 instrument(io, {
   auth: false
@@ -37,9 +35,10 @@ io.use(async (socket, next) => {
   const sessionID = socket.handshake.auth.sessionID;
 
   if (sessionID) {
-    const session = await session.find(sessionID);
-    console.log("Found Session =>", session)
-    if (session) {
+    const soredSession = await session.find(sessionID);
+    
+    console.log("Found Session =>", soredSession)
+    if (soredSession) {
       socket.sessionID = sessionID;
       socket.userId = session.userId;
       socket.username = session.username;

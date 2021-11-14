@@ -14,11 +14,14 @@ class RedisStore extends Session {
     }
 
     find(id) {
-        // return this.client
-        //   .hmget(`session:${id}`, "userID", "username", "connected", "room")
-        //   .then(mapSession);
-
-        return this.client.hGetALl(`session:${id}`)
+      return new Promise((resolve, reject) => {
+         this.client.hgetall(`session:${id}`, function(err, data) {
+          if (err) {
+            reject(err)
+          }
+          resolve(data)
+        });
+      })
       }
 
     save(id, { userId, username, connected, room }) {
