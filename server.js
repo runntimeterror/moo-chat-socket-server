@@ -1,7 +1,12 @@
+require('dotenv').config()
+var config = require('./config');
 const express = require('express');
 const app = express();
 const path = require('path');
 var server = require('http').createServer(app);
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { instrument } = require("@socket.io/admin-ui");
+const { createClient } = require("redis");
 var io = require('socket.io')(server, {
   cors: {
     origin: '*',
@@ -10,64 +15,72 @@ var io = require('socket.io')(server, {
   pingInterval: 1000,
   pintTimeout: 3000,
 });
-
-const { createAdapter } = require("@socket.io/redis-adapter");
-const { createClient } = require("redis");
-var config = require('./config');
-
-   
-const c_users = [];
-
-const {SessionStore} = require('./session')
-
-require('dotenv').config()
+const { RedisStore } = require('./session');
+const crypto = require("crypto");
+const pubClient = createClient({ host: config.REDIS_ENDPOINT, port: config.REDIS_PORT });
+const subClient = pubClient.duplicate();
+const session = new RedisStore(pubClient)
+const randomId = () => crypto.randomBytes(8).toString("hex");
 
 /** MIDDLEWARE **/
-const { instrument } = require("@socket.io/admin-ui");
-instrument(io, {
-    auth: false
-  });
-  
-// Routing
 app.use(express.static(path.join(__dirname, 'public')));
+const sessionMiddleware = session({ secret: 'keyboard cat', cookie: { maxAge: 60000 }});
+app.use(sessionMiddleware);
 
-/** SOCKET CONFIGURATIONS */
-const pubClient = createClient({ host: config.REDIS_ENDPOINT, port: config.REDIS_PORT});
-const subClient = pubClient.duplicate();
-
-const session = new SessionStore(pubClient)
+instrument(io, {
+  auth: false
+});
 io.adapter(createAdapter(pubClient, subClient));
 
-let numUsers = 0;
+io.use(async (socket, next) => {
+  console.log("MIDDLEWARE :::::: =>", "auth==> ", socket.handshake.auth)
+  const sessionID = socket.handshake.auth.sessionID;
+
+  if (sessionID) {
+    const session = await session.find(sessionID);
+    console.log("Found Session =>", session)
+    if (session) {
+      socket.sessionID = sessionID;
+      socket.userId = session.userId;
+      socket.username = session.username;
+      return next();
+    }
+  }
+  const username = socket.handshake.auth.username;
+  const userId = socket.handshake.auth.userId;
+  if (!userId) {
+    return next(new Error("user not authenticated"));
+  }
+  socket.sessionID = randomId();
+  socket.userId = userId;
+  socket.username = username;
+  next();
+});
 
 io.on('connection', (socket) => {
-  let addedUser = false;
+  console.log("CONNECTION :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
 
-  // when the client emits 'new message', this listens and executes
-  socket.on('chat', (payload) => {
-    //gets the room user and the message sent
-    const p_user = get_Current_User(socket.id);
-    try {
-      io.to(p_user.room).emit("message", {
-        userId: p_user.id,
-        username: p_user.username,
-        payload
-      });
-    }
-    catch (ex) {
-      console.error(ex)
-    }
+  session.save(socket.sessionID, {
+    userId: socket.userId,
+    username: socket.username,
+    connected: true,
+    room:""
   });
 
-  // when the client emits 'add user', this listens and executes
-  socket.on("joinRoom", ({ username, roomname }) => {
-    // we store the username in the socket session for this client
-    socket.username = username;
-    ++numUsers;
-    addedUser = true;
+  socket.emit("session", {
+    sessionID: socket.sessionID,
+    userId: socket.userId,
+  });
 
-    session.insertUser(socket.id, {username: socket.username
-      });
+  socket.on("joinRoom", ({ username, roomname }) => {
+    console.log("JOIN ROOM :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
+
+    session.save(socket.sessionID, {
+      userId: socket.userId,
+      username: socket.username,
+      connected: false,
+      room: roomname
+    });
 
     //* create user
     const p_user = join_User(socket.id, username, roomname);
@@ -90,6 +103,22 @@ io.on('connection', (socket) => {
 
   });
 
+  socket.on('chat', (payload) => {
+    console.log("CHAT  :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
+    //gets the room user and the message sent
+    const p_user = get_Current_User(socket.id);
+    try {
+      io.to(p_user.room).emit("message", {
+        userId: p_user.id,
+        username: p_user.username,
+        payload
+      });
+    }
+    catch (ex) {
+      console.error(ex)
+    }
+  });
+
   // when the client emits 'typing', we broadcast it to others
   socket.on('typing', () => {
     socket.broadcast.emit('typing', {
@@ -106,31 +135,41 @@ io.on('connection', (socket) => {
 
   // when the user disconnects.. perform this
   socket.on('disconnect', () => {
-      --numUsers;
+    console.log("DISCONNECT :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
 
-      const p_user = user_Disconnect(socket.id);
+    const p_user = user_Disconnect(socket.id);
 
-      if (p_user) {
-        io.to(p_user.room).emit("message", {
-          userId: p_user.id,
-          username: p_user.username,
-          payload: { text: `${p_user.username} has left the chat` },
-        });
-      }
-
-      session.removeUser(socket.id)
-      // echo globally that this client has left
-      socket.broadcast.emit('user left', {
-        username: socket.username,
-        numUsers: numUsers
+    if (p_user) {
+      io.to(p_user.room).emit("message", {
+        userId: p_user.id,
+        username: p_user.username,
+        payload: { text: `${p_user.username} has left the chat` },
       });
+    }
+
+    session.save(socket.sessionID, {
+      userId: socket.userId,
+      username: socket.username,
+      connected: false,
+      room:""
+    });
+    // echo globally that this client has left
+    socket.broadcast.emit('user left', {
+      username: socket.username
+    });
   });
 });
 
 server.listen(config.PORT, () => {
-    console.log('Server listening at port %d', config.PORT);
+  console.log('Server listening at port %d', config.PORT);
 });
 
+
+
+
+/** TEMP CODE */
+
+var c_users = [];
 function join_User(id, username, room) {
   const p_user = { id, username, room };
 

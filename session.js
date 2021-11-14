@@ -1,36 +1,45 @@
 
 class Session {
-    insertUser(id, data) { }
-    removeUser(id) { }
+    find(id) {}
+    save(id, data) {}
 }
 
-class SessionStore extends Session {
+const SESSION_TTL = 24 * 60 * 60;
+
+class RedisStore extends Session {
 
     constructor(redisClient) {
         super();
         this.client = redisClient;
     }
 
-    insertUser = function (id, data) {
-        this.client.hset('User', id, JSON.stringify({ data, ins_ts: Date.now() }),
-            function (err) {
-                if (err) {
-                    console.error(err);
-                }
-            }
-        );
-    };
+    find(id) {
+        // return this.client
+        //   .hmget(`session:${id}`, "userID", "username", "connected", "room")
+        //   .then(mapSession);
 
+        return this.client.hGetALl(`session:${id}`)
+      }
 
-    removeUser = function (id) {
-        this.client.hdel('User', id,
-            function (err) {
-                if (err) {
-                    console.error(err);
-                }
-            }
-        );
-    };
+    save(id, { userId, username, connected, room }) {
+        this.client.hmset(
+            `session:${id}`,
+            "userId",
+            userId,
+            "username",
+            username,
+            "connected",
+            connected,
+            "room",
+            room
+          , function(err, res) {
+           return true
+          });
+      }
+
 }
 
-module.exports = { SessionStore }
+const mapSession = ([userID, username, connected]) =>
+  userID ? { userID, username, connected: connected === "true" } : undefined;
+
+module.exports = { RedisStore }
