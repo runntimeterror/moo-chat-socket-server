@@ -25,6 +25,7 @@ class RedisStore extends Session {
       }
 
     save(id, { userId, username, connected, room }) {
+      console.log("\nSAVING :::::: =>","\nsessionID ", id, "\nusername ", username, "\nuserId ", userId, "\nroom ", room, "\nconnected ", connected)
         this.client.hmset(
             `session:${id}`,
             "userId",

@@ -11,9 +11,8 @@ var io = require('socket.io')(server, {
   cors: {
     origin: '*',
     allowedHeaders: '*',
-  },
-  pingInterval: 1000,
-  pintTimeout: 3000,
+    methods: ["GET", "POST"]
+  }
 });
 const { RedisStore } = require('./session');
 const crypto = require("crypto");
@@ -31,39 +30,45 @@ instrument(io, {
 io.adapter(createAdapter(pubClient, subClient));
 
 io.use(async (socket, next) => {
-  console.log("MIDDLEWARE :::::: =>", "auth==> ", socket.handshake.auth)
+  const userId = socket.handshake.auth.userId;
   const sessionID = socket.handshake.auth.sessionID;
+  const username = socket.handshake.auth.username;
+  
+  console.log("\nMIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth,"\n")
+  if (!userId) {
+    const err = new Error("not authorized");
+    console.error("Errror =>",err.message)
+   return next(err);
+  }
+
 
   if (sessionID) {
     const soredSession = await session.find(sessionID);
     
-    console.log("Found Session =>", soredSession)
+    console.log("Found Session =>", soredSession, "\n")
     if (soredSession) {
       socket.sessionID = sessionID;
-      socket.userId = session.userId;
-      socket.username = session.username;
+      socket.userId = soredSession.userId;
+      socket.username = soredSession.username;
+      socket.room = soredSession.room;
       return next();
     }
   }
-  const username = socket.handshake.auth.username;
-  const userId = socket.handshake.auth.userId;
-  if (!userId) {
-    return next(new Error("user not authenticated"));
-  }
-  socket.sessionID = randomId();
-  socket.userId = userId;
-  socket.username = username;
-  next();
+  
+  
+  console.log("Setting Defaults")
+  socket = setSocketDefaults(socket, userId, username)
+  return next();
 });
 
 io.on('connection', (socket) => {
-  console.log("CONNECTION :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
+  console.log("\nCONNECTION :::::: =>","\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
 
   session.save(socket.sessionID, {
     userId: socket.userId,
     username: socket.username,
     connected: true,
-    room:""
+    room:socket.room
   });
 
   socket.emit("session", {
@@ -72,44 +77,39 @@ io.on('connection', (socket) => {
   });
 
   socket.on("joinRoom", ({ username, roomname }) => {
-    console.log("JOIN ROOM :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
+    console.log("\nJOIN ROOM :::::: =>", "\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${roomname}`)
 
     session.save(socket.sessionID, {
       userId: socket.userId,
       username: socket.username,
-      connected: false,
+      connected: true,
       room: roomname
     });
 
-    //* create user
-    const p_user = join_User(socket.id, username, roomname);
-    console.log(socket.id, "=id");
-    socket.join(p_user.room);
+    socket.join(roomname);
 
-    //display a welcome message to the user who have joined a room
     socket.emit("message", {
-      userId: p_user.id,
-      username: p_user.username,
-      payload: { text: `Welcome ${p_user.username}` },
+      userId: socket.userId,
+      username: socket.username,
+      payload: { text: `Welcome ${socket.username}` },
     });
 
-    //displays a joined room message to all other room users except that particular user
-    socket.broadcast.to(p_user.room).emit("message", {
-      userId: p_user.id,
-      username: p_user.username,
-      payload: { text: `${p_user.username} has joined the chat` },
+    socket.broadcast.to(roomname).emit("message", {
+      userId: socket.userId,
+      username: socket.username,
+      payload: { text: `${socket.username} has joined the chat` },
     });
 
   });
 
   socket.on('chat', (payload) => {
-    console.log("CHAT  :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
+    console.log("\nCHAT  :::::: =>", "\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
     //gets the room user and the message sent
-    const p_user = get_Current_User(socket.id);
+   // const p_user = get_Current_User(socket.id);
     try {
-      io.to(p_user.room).emit("message", {
-        userId: p_user.id,
-        username: p_user.username,
+      io.to(socket.room).emit("message", {
+        userId: socket.userId,
+        username: socket.username,
         payload
       });
     }
@@ -134,15 +134,15 @@ io.on('connection', (socket) => {
 
   // when the user disconnects.. perform this
   socket.on('disconnect', () => {
-    console.log("DISCONNECT :::::: =>", "auth==> ", socket.handshake.auth,"sessionID =>", socket.sessionID, "username= >", socket.username, "userid= >", socket.userId)
+    console.log("\nDISCONNECT :::::: =>",  "\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
 
-    const p_user = user_Disconnect(socket.id);
+    // const p_user = user_Disconnect(socket.id);
 
-    if (p_user) {
-      io.to(p_user.room).emit("message", {
-        userId: p_user.id,
-        username: p_user.username,
-        payload: { text: `${p_user.username} has left the chat` },
+    if (socket.userId) {
+      io.to(socket.room).emit("message", {
+        userId: socket.userId,
+        username: socket.username,
+        payload: { text: `${socket.username} has left the chat` },
       });
     }
 
@@ -163,30 +163,10 @@ server.listen(config.PORT, () => {
   console.log('Server listening at port %d', config.PORT);
 });
 
-
-
-
-/** TEMP CODE */
-
-var c_users = [];
-function join_User(id, username, room) {
-  const p_user = { id, username, room };
-
-  c_users.push(p_user);
-  console.log(c_users, "users");
-
-  return p_user;
-}
-
-// Gets a particular user id to return the current user
-function get_Current_User(id) {
-  return c_users.find((p_user) => p_user.id === id);
-}
-
-function user_Disconnect(id) {
-  const index = c_users.findIndex((p_user) => p_user.id === id);
-
-  if (index !== -1) {
-    return c_users.splice(index, 1)[0];
-  }
+const setSocketDefaults = function(socket, userId, username) {
+  socket.sessionID = randomId();
+  socket.userId = userId;
+  socket.username = username;
+  socket.room = ""
+  return socket
 }
