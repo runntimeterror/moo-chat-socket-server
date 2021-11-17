@@ -1,0 +1,57 @@
+name: Moochat Socket Server CI/CD
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Use Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: 14.x
+        cache: 'npm'
+
+    - name: create env file
+      run: |
+        touch .env.deploy
+        echo PORT=${{ secrets.PORT }} >> .env.deploy
+        echo REDIS_ENDPOINT=${{ secrets.REDIS_ENDPOINT }} >> .env.deploy
+        echo REDIS_POINT=${{ secrets.REDIS_PORT }} >> .env.deploy
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag
+      env:
+        ECR_REGISTRY: ${{ steps.login-erc.outputs.registry }}
+        ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
+        IMAGE_TAG: latest
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: push the image to Amazon ECR
+      if: github.event.pull_request.merged == 'true' || github.event_name == 'push'
+      env:
+        ECR_REGISTRY: ${{ steps.login-erc.outputs.registry }}
+        ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
+        IMAGE_TAG: latest
+      run: |
+        echo "Pushing image to ECR..."
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
