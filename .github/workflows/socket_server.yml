@@ -2,7 +2,9 @@ name: Moochat Socket Server CI/CD
 
 on:
   push:
-    branches: [ main]
+    branches: [ main ]
+    tags:
+    - '*'
   pull_request:
     branches: [ main ]
 
