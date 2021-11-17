@@ -40,7 +40,7 @@ jobs:
 
     - name: Build, tag
       env:
-        ECR_REGISTRY: ${{ steps.login-erc.outputs.registry }}
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
         IMAGE_TAG: latest
       run: |
