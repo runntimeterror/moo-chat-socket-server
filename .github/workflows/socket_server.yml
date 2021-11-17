@@ -43,7 +43,7 @@ jobs:
     - name: push the image to Amazon ECR
       if: github.event.pull_request.merged == 'true' || github.event_name == 'push'
       env:
-        ECR_REGISTRY: ${{ steps.login-erc.outputs.registry }}
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
         IMAGE_TAG: latest
       run: |
