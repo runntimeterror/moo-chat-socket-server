@@ -33,18 +33,18 @@ io.use(async (socket, next) => {
   const userId = socket.handshake.auth.userId;
   const sessionID = socket.handshake.auth.sessionID;
   const username = socket.handshake.auth.username;
-  
+
   console.log("\nMIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth,"\n")
   if (!userId) {
     const err = new Error("not authorized");
     console.error("Errror =>",err.message)
-   return next(err);
+    return next(err);
   }
 
 
   if (sessionID) {
     const soredSession = await session.find(sessionID);
-    
+
     console.log("Found Session =>", soredSession, "\n")
     if (soredSession) {
       socket.sessionID = sessionID;
@@ -54,21 +54,54 @@ io.use(async (socket, next) => {
       return next();
     }
   }
-  
-  
+
+
   console.log("Setting Defaults")
   socket = setSocketDefaults(socket, userId, username)
   return next();
 });
 
 io.on('connection', (socket) => {
-  console.log("\nCONNECTION :::::: =>","\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
+  console.log("\nCONNECTION :::::: =>", "\nauth ", socket.handshake.auth, "\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
+
+  socket.use(async (packet, next) => {
+    const userId = socket.handshake.auth.userId;
+    const sessionID = socket.handshake.auth.sessionID;
+    const username = socket.handshake.auth.username;
+
+    console.log("\nMIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth, "\n")
+    if (!userId) {
+      const err = new Error("not authorized");
+      console.error("Errror =>", err.message)
+      return next(err);
+    }
+
+
+    if (sessionID) {
+      const soredSession = await session.find(sessionID);
+
+      console.log("Found Session =>", soredSession, "\n")
+      if (soredSession) {
+        socket.sessionID = sessionID;
+        socket.userId = soredSession.userId;
+        socket.username = soredSession.username;
+        socket.room = soredSession.room;
+        return next();
+      }
+    }
+
+
+    console.log("Setting Defaults")
+    socket = setSocketDefaults(socket, userId, username)
+
+    next();
+  });
 
   session.save(socket.sessionID, {
     userId: socket.userId,
     username: socket.username,
     connected: true,
-    room:socket.room
+    room: socket.room
   });
 
   socket.emit("session", {
@@ -77,7 +110,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on("joinRoom", ({ username, roomname }) => {
-    console.log("\nJOIN ROOM :::::: =>", "\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${roomname}`)
+    console.log("\nJOIN ROOM :::::: =>", "\nauth ", socket.handshake.auth, "\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${roomname}`)
 
     session.save(socket.sessionID, {
       userId: socket.userId,
@@ -103,9 +136,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat', (payload) => {
-    console.log("\nCHAT  :::::: =>", "\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
+    console.log("\nCHAT  :::::: =>", "\nauth ", socket.handshake.auth, "\npayload", payload, "\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
     //gets the room user and the message sent
-   // const p_user = get_Current_User(socket.id);
+    // const p_user = get_Current_User(socket.id);
     try {
       io.to(socket.room).emit("message", {
         userId: socket.userId,
@@ -134,7 +167,7 @@ io.on('connection', (socket) => {
 
   // when the user disconnects.. perform this
   socket.on('disconnect', () => {
-    console.log("\nDISCONNECT :::::: =>",  "\nauth ", socket.handshake.auth,"\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
+    console.log("\nDISCONNECT :::::: =>", "\nauth ", socket.handshake.auth, "\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
 
     // const p_user = user_Disconnect(socket.id);
 
@@ -150,7 +183,7 @@ io.on('connection', (socket) => {
       userId: socket.userId,
       username: socket.username,
       connected: false,
-      room:""
+      room: ""
     });
     // echo globally that this client has left
     socket.broadcast.emit('user left', {
@@ -163,7 +196,7 @@ server.listen(config.PORT, () => {
   console.log('Server listening at port %d', config.PORT);
 });
 
-const setSocketDefaults = function(socket, userId, username) {
+const setSocketDefaults = function (socket, userId, username) {
   socket.sessionID = randomId();
   socket.userId = userId;
   socket.username = username;
