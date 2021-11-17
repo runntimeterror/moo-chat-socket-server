@@ -41,11 +41,11 @@ jobs:
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
 
     - name: push the image to Amazon ECR
-      if: github.event.pull_request.merged == 'true' || github.event_name == 'push'
+      if: startsWith(github.ref, 'refs/tags/v') && (github.event.pull_request.merged == 'true' || github.event_name == 'push')
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
-        IMAGE_TAG: latest
+        IMAGE_TAG: ${GITHUB_REF#refs/tags/}
       run: |
         echo "Pushing image to ECR..."
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
