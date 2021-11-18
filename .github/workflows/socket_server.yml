@@ -18,10 +18,10 @@ jobs:
 
     - name: create env file
       run: |
-        touch .env.deploy
-        echo PORT=${{ secrets.PORT }} >> .env.deploy
-        echo REDIS_ENDPOINT=${{ secrets.REDIS_ENDPOINT }} >> .env.deploy
-        echo REDIS_PORT=${{ secrets.REDIS_PORT }} >> .env.deploy
+        touch .env
+        echo PORT=${{ secrets.PORT }} >> .env
+        echo REDIS_ENDPOINT=${{ secrets.REDIS_ENDPOINT }} >> .env
+        echo REDIS_PORT=${{ secrets.REDIS_PORT }} >> .env
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v1
