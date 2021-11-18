@@ -37,7 +37,11 @@ class RedisStore extends Session {
             "room",
             room
           , function(err, res) {
-           return true
+            if (err) {
+              console.log("Error while saving ==>", err)
+            }
+            return
+            
           });
       }
 
