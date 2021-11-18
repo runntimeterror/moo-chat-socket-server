@@ -16,6 +16,7 @@ var io = require('socket.io')(server, {
 });
 const { RedisStore } = require('./session');
 const crypto = require("crypto");
+const { REDIS_ENDPOINT } = require('./config');
 const pubClient = createClient({ host: config.REDIS_ENDPOINT, port: config.REDIS_PORT });
 const subClient = pubClient.duplicate();
 const session = new RedisStore(pubClient)
@@ -194,6 +195,7 @@ io.on('connection', (socket) => {
 
 server.listen(config.PORT, () => {
   console.log('Server listening at port %d', config.PORT);
+  console.log(`REDIS Endpoint: ${REDIS_ENDPOINT}`);
 });
 
 const setSocketDefaults = function (socket, userId, username) {
