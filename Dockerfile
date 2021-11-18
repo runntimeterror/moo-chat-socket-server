@@ -8,4 +8,4 @@ COPY . .
 EXPOSE 8000
 RUN chown -R node /usr/src/app
 USER node
-CMD pm2-runtime -r dotenv/config server.js dotenv_config_path=./.env.deploy
+CMD pm2-runtime -r dotenv/config server.js
