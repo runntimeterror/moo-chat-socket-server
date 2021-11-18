@@ -35,7 +35,7 @@ io.use(async (socket, next) => {
   const sessionID = socket.handshake.auth.sessionID;
   const username = socket.handshake.auth.username;
 
-  console.log("\nMIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth,"\n")
+  console.log("\nFirst Conn ::MIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth,"\n")
   if (!userId) {
     const err = new Error("not authorized");
     console.error("Errror =>",err.message)
@@ -46,7 +46,7 @@ io.use(async (socket, next) => {
   if (sessionID) {
     const soredSession = await session.find(sessionID);
 
-    console.log("Found Session =>", soredSession, "\n")
+    console.log("First Conn :: Found Session =>", soredSession, "\n")
     if (soredSession) {
       socket.sessionID = sessionID;
       socket.userId = soredSession.userId;
@@ -57,20 +57,20 @@ io.use(async (socket, next) => {
   }
 
 
-  console.log("Setting Defaults")
+  console.log("First Conn :: Setting Defaults")
   socket = setSocketDefaults(socket, userId, username)
   return next();
 });
 
 io.on('connection', (socket) => {
-  console.log("\nCONNECTION :::::: =>", "\nauth ", socket.handshake.auth, "\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
+  console.log("\n Connection :::::: =>", "\nauth ", socket.handshake.auth, "\nsessionID =>", `${socket.sessionID}`, "\nusername", `${socket.username}`, "\nuserid", `${socket.userId}`, "\nroom ", `${socket.room}`)
 
   socket.use(async (packet, next) => {
     const userId = socket.handshake.auth.userId;
     const sessionID = socket.handshake.auth.sessionID;
     const username = socket.handshake.auth.username;
 
-    console.log("\nMIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth, "\n")
+    console.log("\nConnection :: MIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth, "\n")
     if (!userId) {
       const err = new Error("not authorized");
       console.error("Errror =>", err.message)
@@ -92,7 +92,7 @@ io.on('connection', (socket) => {
     }
 
 
-    console.log("Setting Defaults")
+    console.log("Connection :: Setting Defaults")
     socket = setSocketDefaults(socket, userId, username)
 
     next();
@@ -105,6 +105,7 @@ io.on('connection', (socket) => {
     room: socket.room
   });
 
+  console.log("\n Emitting Session ID :::::: =>",socket.sessionID)
   socket.emit("session", {
     sessionID: socket.sessionID,
     userId: socket.userId,
