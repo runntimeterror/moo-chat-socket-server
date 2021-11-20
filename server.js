@@ -2,8 +2,12 @@ require('dotenv').config()
 var config = require('./config');
 const express = require('express');
 const app = express();
+var cors = require('cors')
+var bodyParser = require('body-parser')
 const path = require('path');
+const fs = require('fs');
 var server = require('http').createServer(app);
+var aes256 = require("aes256");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { instrument } = require("@socket.io/admin-ui");
 const { createClient } = require("redis");
@@ -21,13 +25,45 @@ const pubClient = createClient({ host: config.REDIS_ENDPOINT, port: config.REDIS
 const subClient = pubClient.duplicate();
 const session = new RedisStore(pubClient)
 const randomId = () => crypto.randomBytes(8).toString("hex");
-
+const secret_key = "uI2ooxtwHeI6q69PS98fx9SWVGbpQohO";
 /** MIDDLEWARE **/
 app.use(express.static(path.join(__dirname, 'public')));
-
 instrument(io, {
   auth: false
 });
+app.use(cors())
+app.use(bodyParser.json());
+
+const multer = require('multer')
+const storage = multer.memoryStorage()
+const upload = multer({ storage: storage })
+
+app.post('/senddata', upload.single('somefile'), async function (req, res) {
+
+  if (!req.body.sessionId) {
+    res.status(400).send("missing session id")
+    return
+  }
+  const soredSession = await session.find(req.body.sessionId);
+
+  console.log("Found Session =>", soredSession, "\n")
+  if (!soredSession) {
+    res.status(400).send("could not find session id")
+    return
+  }
+
+  payload = { audio: req.file.buffer }
+
+  io.to(soredSession.room).emit("message", {
+    userId: soredSession.userId,
+    username: soredSession.username,
+    payload
+  });
+
+res.send("the deed is done")
+})
+
+
 io.adapter(createAdapter(pubClient, subClient));
 
 io.use(async (socket, next) => {
@@ -35,10 +71,10 @@ io.use(async (socket, next) => {
   const sessionID = socket.handshake.auth.sessionID;
   const username = socket.handshake.auth.username;
 
-  console.log("\nFirst Conn ::MIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth,"\n")
+  console.log("\nFirst Conn ::MIDDLEWARE :::::: =>", "\nauth ", socket.handshake.auth, "\n")
   if (!userId) {
     const err = new Error("not authorized");
-    console.error("Errror =>",err.message)
+    console.error("Errror =>", err.message)
     return next(err);
   }
 
@@ -105,7 +141,7 @@ io.on('connection', (socket) => {
     room: socket.room
   });
 
-  console.log("\n Emitting Session ID :::::: =>",socket.sessionID)
+  console.log("\n Emitting Session ID :::::: =>", socket.sessionID)
   socket.emit("session", {
     sessionID: socket.sessionID,
     userId: socket.userId,
