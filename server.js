@@ -40,6 +40,8 @@ const upload = multer({ storage: storage })
 
 app.post('/senddata', upload.single('somefile'), async function (req, res) {
 
+  console.log("Incoming Session ID  and File==> ", req.body.sessionId , req.file)
+  
   if (!req.body.sessionId) {
     res.status(400).send("missing session id")
     return
